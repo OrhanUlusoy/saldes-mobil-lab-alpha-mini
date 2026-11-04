@@ -30,6 +30,21 @@ Poddarna kan vara friska fast modellen gissar dåligt. Då går vi tillbaka till
 3. Spåra orsaken: SHA i `/health` och `matvarden.json` visar commit, datafil och kontrollsumma.
 4. Rätta i en pull request, och låt pipelinen rulla ut den nya versionen.
 
+## 3b. Hur upptäcker vi en sämre modell eller ändrad data?
+
+| Vad kan hända | Hur vi upptäcker det | Vad händer då |
+| --- | --- | --- |
+| Nya modellen är sämre än kraven | **Finns redan.** Kvalitetsgrinden (`churn.evaluate`) stoppar vid ROC AUC under 0,70. Testet jämför också med en `DummyClassifier` | Modellen byggs aldrig till en image, så den når inte klustret |
+| Nya datan har fel form (saknade värden, negativ ålder, ny kolumn) | **Finns redan.** `datakontroll` kör pandera-schemat före träningen | Pipelinen stoppar och ingen ny modell tränas |
+| Datan har fel *innehåll* men rätt form, till exempel en annan kundgrupp | **Saknas.** Jämför fördelningen av varje feature mot träningsdatan (till exempel PSI eller ett KS-test) och larma över en gräns | Larm till teamet. Vi tränar om på nya datan och låter kvalitetsgrinden avgöra |
+| Modellen blir sämre över tid fast koden är oförändrad | **Saknas.** Logga riskerna som `/predict` ger och följ medelvärde och andel kunder över 0,5. När vi vet vilka som verkligen sa upp jämför vi med ROC AUC | Larm. Omträning på färsk data. Är den nya modellen inte bättre rullar vi tillbaka |
+| En nyss utrullad modell uppför sig konstigt | `/health` visar commit och ROC AUC. Pods som inte blir redo stoppar utrullningen | `kubectl rollout undo` till förra versionen, eller `--to-revision=N` |
+
+Tre sätt att reagera, i den här ordningen:
+1. **Tillbakarullning** när något nyss utrullat är trasigt. Går på sekunder och rör inte ringlistan.
+2. **Omträning** när datan har ändrats. Pipelinen tränar, kontrollerar och rullar ut den nya modellen.
+3. **Larm** när vi inte vet orsaken. En människa tittar innan något ändras.
+
 ## 4. Hur ser vi att det fungerar?
 
 - `readinessProbe` och `livenessProbe` mot `/health`. Kubernetes startar om en pod som slutar svara.
