@@ -33,8 +33,13 @@ runs:
         if ! kubectl rollout status deployment/saldes --timeout=180s; then
           echo "::error::Utrullningen blev inte klar, rullar tillbaka"
           kubectl get pods -l app=saldes
-          kubectl rollout undo deployment/saldes
-          kubectl rollout status deployment/saldes --timeout=180s
+          kubectl describe pods -l app=saldes | tail -30
+          kubectl get events --sort-by=.lastTimestamp | tail -15
+          if kubectl rollout undo deployment/saldes; then
+            kubectl rollout status deployment/saldes --timeout=180s
+          else
+            echo "Det finns ingen tidigare version att gå tillbaka till"
+          fi
           exit 1
         fi
 

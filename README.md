@@ -160,7 +160,7 @@ Manifesten ligger i `k8s/` och består av en gemensam bas och en liten överlagr
 | --- | --- |
 | `k8s/bas/` | `deployment.yaml` (3 repliker, probes, resurser) och `service.yaml` |
 | `k8s/kind/` | Testmiljön. Bas med 2 repliker |
-| `k8s/moln/` | Molnklustret. Bas som den är |
+| `k8s/moln/` | Molnklustret. 2 repliker och lägre `requests`, så att de ryms i kursens resurskvot |
 
 ### Två miljöer
 
