@@ -187,6 +187,18 @@ Deploymenten använder `RollingUpdate` med `maxUnavailable: 0` och `maxSurge: 1`
 ny pod först och tar bort en gammal pod först när den nya är redo (`readinessProbe` mot `/health`). Då
 finns det alltid minst lika många fungerande pods som `replicas` under en utrullning.
 
+**Varför rolling update och inte blue/green eller canary?**
+
+| Strategi | Varför inte |
+| --- | --- |
+| Blue/green | Kräver två kompletta uppsättningar samtidigt. Kursens namnrymd har en kvot på 384 Mi minne i `requests`, så vi får plats med tre pods på 128 Mi men inte fyra (2 + 2) |
+| Canary | Behöver trafikdelning (ingress eller service mesh) och mätvärden som visar om canaryn är sämre. Vi har ingetdera, och med två repliker blir stegen för grova för att säga något |
+| **Rolling update** | Tjänsten har inget eget tillstånd, för modellen ligger i imagen. En ny version kan därför köras bredvid den gamla, och Kubernetes byter en pod i taget utan driftstopp |
+
+Modellen och koden följs åt i samma image, så en tillbakarullning ger alltid en modell som hör ihop med
+sin kod. Ringlistan påverkas inte av en utrullning eller tillbakarullning, eftersom den skapas av ett eget
+jobb i pipelinen från artefakten `modell-<sha>` och inte från poddarna.
+
 ```bash
 kubectl rollout status deployment/saldes     # följ utrullningen
 kubectl rollout history deployment/saldes    # vilka versioner som funnits
