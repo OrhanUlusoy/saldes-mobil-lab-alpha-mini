@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: saldes
-          image: ghcr.io/orhanulusoy/saldes-mobil-lab-alpha-mini:374b26e7ade49f23f84cb2cc11c70192ebc3a775
+          image: ghcr.io/orhanulusoy/saldes-mobil-lab-alpha-mini:759e798bfc62dea3aee54cc78a7346773ad9d93b
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
