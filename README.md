@@ -22,6 +22,8 @@ flowchart LR
     C -->|kandidat-SHA| D[utvardera<br/>ROC AUC-grind]
     D -->|modell-SHA| E[skapa ringlista<br/>bara på main]
     D -->|modell-SHA| F[bygg och testa image<br/>push bara från main]
+    F --> G[rulla ut i kind<br/>bara på main]
+    G --> H[rulla ut i molnet<br/>kräver godkännande]
 ```
 
 | Jobb | Vad det gör | Stoppar pipelinen om |
@@ -31,7 +33,9 @@ flowchart LR
 | `train` | Tränar modellen och laddar upp den som artefakten `kandidat-<sha>` | Träningen kraschar |
 | `utvardera` | Laddar ner kandidaten och kör kvalitetsgrinden. Är modellen godkänd sparas den som `modell-<sha>`. Mätvärdena skrivs i körningens **Summary** | ROC AUC är under tröskeln |
 | `skapa ringlista` | Skapar `ringlista.csv` från den godkända modellen och laddar upp den som artefakt. Körs bara på `main`, aldrig på pull requests | Ringlistan blir inte skapad |
-| `bygg och testa image` | Bygger en Docker-image med den godkända modellen, smoke-testar den och pushar till ghcr.io. Pushen sker bara från `main` | Smoke-testet faller |
+| `bygg och testa image` | Bygger en Docker-image med den godkända modellen, smoke-testar den och pushar till ghcr.io för amd64 och arm64. Pushen sker bara från `main` | Smoke-testet faller |
+| `rulla ut i kind` | Startar ett tillfälligt kind-kluster, rullar ut imagen och kontrollerar `/health`. Bara på `main` | Utrullningen blir inte klar |
+| `rulla ut i molnet` | Rullar ut samma image i molnklustret. Väntar på godkännande och körs bara på `main` | Utrullningen blir inte klar (då rullas den tillbaka) |
 
 `train` väntar på både `test` och `datakontroll`, och allt efter `train` väntar på `utvardera`. En
 modell som inte har klarat både testerna och kvalitetsgrinden kan alltså aldrig bli en ringlista eller
@@ -148,6 +152,68 @@ I pipelinen taggas imagen med commitens SHA, aldrig `latest`:
 containern, anropar `/health` och `/predict` och kontrollerar att risken ligger mellan 0 och 1. Först
 när det har gått igenom, och bara på `main`, pushas imagen.
 
+## Kubernetes
+
+Manifesten ligger i `k8s/` och består av en gemensam bas och en liten överlagring per miljö (kustomize):
+
+| Mapp | Innehåll |
+| --- | --- |
+| `k8s/bas/` | `deployment.yaml` (3 repliker, probes, resurser) och `service.yaml` |
+| `k8s/kind/` | Testmiljön. Bas med 2 repliker |
+| `k8s/moln/` | Molnklustret. Bas som den är |
+
+### Två miljöer
+
+| Miljö | Var | Hur den används |
+| --- | --- | --- |
+| kind | På din dator med `kind create cluster`, och som tillfälligt kluster i pipelinen | Här provar vi manifesten innan molnet |
+| moln | Kursens kluster, eller ett eget (se guiden *Run your own cluster*) | Den riktiga miljön |
+
+Lokalt:
+
+```bash
+kubectl apply -k k8s/kind
+kubectl rollout status deployment/saldes
+kubectl port-forward service/saldes 8080:80
+curl localhost:8080/health
+```
+
+Samma image körs i båda miljöerna. Imagen byggs för både amd64 (kind på en vanlig dator) och arm64
+(molnklustret), annars startar den inte i molnet.
+
+### Utrullningsstrategi
+
+Deploymenten använder `RollingUpdate` med `maxUnavailable: 0` och `maxSurge: 1`. Kubernetes startar en
+ny pod först och tar bort en gammal pod först när den nya är redo (`readinessProbe` mot `/health`). Då
+finns det alltid minst lika många fungerande pods som `replicas` under en utrullning.
+
+```bash
+kubectl rollout status deployment/saldes     # följ utrullningen
+kubectl rollout history deployment/saldes    # vilka versioner som funnits
+kubectl rollout undo deployment/saldes       # tillbaka till förra versionen
+```
+
+### Utrullning från pipelinen
+
+Jobben `rulla ut i kind` och `rulla ut i molnet` använder den lokala actionen
+`.github/actions/deploya`. Den sätter imagen till commitens SHA, applicerar manifesten, väntar på
+`rollout status` och kontrollerar `/health`. Faller utrullningen kör actionen `kubectl rollout undo`
+och jobbet blir rött, så att den förra versionen fortsätter svara.
+
+- Utrullning sker **bara från `main`**, aldrig på pull requests och inte vid den schemalagda måndagskörningen.
+- `rulla ut i molnet` väntar på **godkännande**. Det kommer från GitHub-miljön `produktion` som har
+  required reviewers.
+- Molnet nås med hemligheten `KUBECONFIG` som ligger i miljön `produktion`. Den innehåller klustrets
+  adress och namnrymd och ska aldrig checkas in.
+
+Engångsinställning i repot (Settings → Environments):
+
+1. Skapa miljön `produktion` och lägg till en eller flera granskare under *Required reviewers*.
+2. Begränsa miljön till grenen `main` under *Deployment branches*.
+3. Lägg till hemligheten `KUBECONFIG` i miljön med innehållet i kubeconfig-filen för molnklustret.
+
+Driftplanen finns i [docs/driftplan.md](docs/driftplan.md).
+
 ## Så arbetar vi
 
 - `main` är skyddad. Ingen pushar direkt, och varje pull request granskas av en teamkamrat innan den
@@ -165,8 +231,11 @@ när det har gått igenom, och bara på `main`, pushas imagen.
 | `kontroller/schema.py` | Datakontrollen med pandera |
 | `tests/` | Tester på tre nivåer |
 | `Dockerfile`, `.dockerignore` | Paketering av modellen och API:et |
+| `k8s/` | Kubernetes-manifest: `bas/`, och en mapp per miljö (`kind/`, `moln/`) |
+| `docs/driftplan.md` | Underlag till den muntliga driftplanen |
 | `.github/workflows/ci.yml` | Pipelinen |
 | `.github/actions/installera/` | Återanvändbar installation av Python och paket |
+| `.github/actions/deploya/` | Återanvändbar utrullning till Kubernetes, med automatisk återrullning |
 | `arenden/` | Kursens övningsärenden |
 
 ## Team

@@ -16,6 +16,7 @@ on:
       - ".github/actions/**"
       - "Dockerfile"
       - ".dockerignore"
+      - "k8s/**"
 
   pull_request:
     paths:
@@ -28,6 +29,7 @@ on:
       - ".github/actions/**"
       - "Dockerfile"
       - ".dockerignore"
+      - "k8s/**"
 
   workflow_dispatch:
     inputs:
@@ -37,7 +39,7 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   test:
@@ -196,7 +198,9 @@ jobs:
           context: .
           load: true
           tags: ${{ env.IMAGE }}
-        
+          cache-to: type=gha,mode=max
+          cache-from: type=gha
+
       # AI genererat
       - name: Smoke-test
         run: |
@@ -220,6 +224,67 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Molnklustret kör ARM, så imagen byggs för både amd64 och arm64
+      - uses: docker/setup-qemu-action@v3
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+
       - name: Pusha imagen
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        run: docker push "$IMAGE"
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha
+
+  deploy-kind:
+    name: rulla ut i kind
+    runs-on: ubuntu-latest
+    needs: docker
+
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.event_name != 'schedule'
+
+    steps:
+      - uses: actions/checkout@v7
+      - name: Gör imagenamnet gemener
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}" >> "$GITHUB_ENV"
+
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: test
+
+      - uses: ./.github/actions/deploya
+        with:
+          miljo: kind
+          image: ${{ env.IMAGE }}
+
+  deploy-moln:
+    name: rulla ut i molnet
+    runs-on: ubuntu-latest
+    needs: deploy-kind
+
+    # Kräver godkännande: miljön produktion har required reviewers i repots Settings
+    environment: produktion
+
+    concurrency:
+      group: deploy-moln
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v7
+      - name: Gör imagenamnet gemener
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}" >> "$GITHUB_ENV"
+
+      - name: Anslut till klustret
+        env:
+          KUBECONFIG_INNEHALL: ${{ secrets.KUBECONFIG }}
+        run: |
+          install -m 600 /dev/null "$RUNNER_TEMP/kubeconfig"
+          printf '%s' "$KUBECONFIG_INNEHALL" > "$RUNNER_TEMP/kubeconfig"
+          echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+
+      - uses: ./.github/actions/deploya
+        with:
+          miljo: moln
+          image: ${{ env.IMAGE }}
