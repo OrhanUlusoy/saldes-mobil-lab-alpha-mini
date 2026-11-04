@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: saldes
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: saldes
+  template:
+    metadata:
+      labels:
+        app: saldes
+    spec:
+      containers:
+        - name: saldes
+          image: ghcr.io/orhanulusoy/saldes-mobil-lab-alpha-mini:374b26e7ade49f23f84cb2cc11c70192ebc3a775
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
