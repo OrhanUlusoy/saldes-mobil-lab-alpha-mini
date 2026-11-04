@@ -38,7 +38,10 @@ Poddarna kan vara friska fast modellen gissar dåligt. Då går vi tillbaka till
 
 ## 5. Kapacitet
 
-- 3 repliker i molnet, vardera med `requests` 100m CPU och 256 Mi minne och `limits` 500m och 512 Mi.
+- 2 repliker i molnet, vardera med `requests` 50m CPU och 128 Mi minne och `limits` 500m och 512 Mi.
+  Kursens namnrymd har en kvot (250m CPU och 384 Mi minne i requests) som styr hur många pods som ryms,
+  inklusive den extra pod som en rolling update startar. Vår första utrullning fastnade på 1/3 pods
+  av just det skälet.
 - Fler repliker: ändra `replicas` i manifestet och rulla ut, eller `kubectl scale deployment/saldes --replicas=N`
   för att prova något tillfälligt.
 

@@ -4,3 +4,20 @@ kind: Kustomization
 # Namnrymden kommer från kubeconfig, så den står inte här
 resources:
   - ../bas
+
+# Kursens namnrymd har en kvot på 250m CPU och 384Mi minne i requests.
+# Med 2 repliker och en extra pod under en rolling update blir det 3 x 50m och 3 x 128Mi
+replicas:
+  - name: saldes
+    count: 2
+
+patches:
+  - target:
+      kind: Deployment
+      name: saldes
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests
+        value:
+          cpu: 50m
+          memory: 128Mi
