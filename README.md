@@ -224,6 +224,7 @@ Engångsinställning i repot (Settings → Environments):
 2. Begränsa miljön till grenen `main` under *Deployment branches*.
 3. Lägg till hemligheten `KUBECONFIG` i miljön med innehållet i kubeconfig-filen för molnklustret.
 
+Hur en uppdatering och en tillbakarullning såg ut i molnet står i [docs/utrullning.md](docs/utrullning.md).
 Driftplanen finns i [docs/driftplan.md](docs/driftplan.md).
 
 ## Så arbetar vi
@@ -260,4 +261,6 @@ Driftplanen finns i [docs/driftplan.md](docs/driftplan.md).
 
 Delar av koden och dokumentationen har tagits fram med stöd av AI. Stegen som är markerade med
 `# AI genererat` i `ci.yml` (Summary-steget och smoke-testet) är sådana.
+Utrullningen till Kubernetes (`k8s/`, `.github/actions/deploya/`, jobben `rulla ut i kind` och
+`rulla ut i molnet`) och dokumentationen i `docs/` togs fram med stöd av AI och har provats mot kursklustret.
 
